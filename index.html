@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Checkmate a lone king with king and queen without ever seeing the opponent's moves: 16 regions, one premove sequence each.">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Blind Queen Mate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap">
+<style>
+/* Layout: board left, control panel right; stacks on phones. Regions are tinted in oklch, light/dark square pairs per hue keep the checkerboard. */
+:root{
+  --bg:#f3f4f6; --panel:#ffffff; --fg:#1b1f27; --muted:#5b6372; --line:#d9dce3;
+  --accent:#2f5bd3; --accent-fg:#ffffff;
+  --sq-light-L:0.88; --sq-dark-L:0.72; --sq-C-light:0.075; --sq-C-dark:0.11;
+  --neutral-light:#e9e7e2; --neutral-dark:#b7b2a8;
+  --mate:#c0262d; --check:#c77700;
+  --font-display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --font-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12151b; --panel:#1a1e26; --fg:#e7e9ee; --muted:#9aa3b2; --line:#2c3240;
+  --accent:#7ea2ff; --accent-fg:#0d1220;
+  --sq-light-L:0.74; --sq-dark-L:0.56; --sq-C-light:0.085; --sq-C-dark:0.11;
+  --neutral-light:#8d8a84; --neutral-dark:#5d5a55;
+  --mate:#ff6b70; --check:#ffb347; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#12151b; --panel:#1a1e26; --fg:#e7e9ee; --muted:#9aa3b2; --line:#2c3240;
+  --accent:#7ea2ff; --accent-fg:#0d1220;
+  --sq-light-L:0.74; --sq-dark-L:0.56; --sq-C-light:0.085; --sq-C-dark:0.11;
+  --neutral-light:#8d8a84; --neutral-dark:#5d5a55;
+  --mate:#ff6b70; --check:#ffb347; color-scheme:dark;}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px}
+.wrap{max-width:1120px;margin:0 auto;display:grid;gap:20px}
+header h1{font-family:var(--font-display);font-weight:700;font-size:clamp(1.6rem,3.2vw,2.2rem);margin:0;letter-spacing:.01em;text-wrap:balance}
+header p{margin:.3rem 0 0;color:var(--muted);max-width:70ch}
+.main{display:grid;grid-template-columns:minmax(0,560px) minmax(0,1fr);gap:24px;align-items:start}
+@media (max-width:860px){.main{grid-template-columns:minmax(0,1fr)}}
+.boardbox{display:grid;grid-template-columns:18px minmax(0,1fr);grid-template-rows:minmax(0,1fr) 18px;gap:4px;width:100%;max-width:560px}
+.ranks{display:grid;grid-template-rows:repeat(8,1fr);font:600 11px var(--font-mono);color:var(--muted);align-items:center;justify-items:center}
+.files{grid-column:2;display:grid;grid-template-columns:repeat(8,1fr);font:600 11px var(--font-mono);color:var(--muted);justify-items:center}
+.board{position:relative;aspect-ratio:1;max-width:100%;display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);
+  border-radius:4px;overflow:hidden;box-shadow:0 0 0 1px var(--line),0 8px 24px rgb(0 0 0 / .12);user-select:none;touch-action:manipulation}
+.sq{position:relative;cursor:pointer;display:flex;align-items:flex-start;justify-content:flex-start}
+.sq .rn{position:absolute;left:4px;top:2px;font:600 clamp(8px,1.4vw,11px) var(--font-mono);color:rgb(0 0 0 / .55);pointer-events:none}
+.sq.dim .rn{display:none}
+.sq.sel::after{content:"";position:absolute;inset:0;box-shadow:inset 0 0 0 3px var(--fg);}
+.sq.inreg::before{content:"";position:absolute;inset:0;box-shadow:inset 0 0 0 2px rgb(255 255 255 / .55)}
+.sq.faded{filter:saturate(.25) brightness(1.02)}
+.sq .dot{position:absolute;left:50%;top:50%;width:26%;height:26%;transform:translate(-50%,-50%);border-radius:50%;
+  background:rgb(20 20 30 / .38);box-shadow:0 0 0 2px rgb(255 255 255 / .55);pointer-events:none}
+.sq .target{position:absolute;inset:18%;border-radius:50%;border:3px solid var(--accent);pointer-events:none;animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{transform:scale(.85)}}
+.sq.last::after{content:"";position:absolute;inset:0;background:rgb(255 230 80 / .35);pointer-events:none}
+.sq.mated::after{content:"";position:absolute;inset:0;background:radial-gradient(circle,rgb(230 30 40 / .75) 0%,rgb(230 30 40 / 0) 70%);pointer-events:none}
+.sq.checked::after{content:"";position:absolute;inset:0;background:radial-gradient(circle,rgb(255 150 0 / .7) 0%,rgb(255 150 0 / 0) 70%);pointer-events:none}
+.piece{position:absolute;left:0;top:0;width:12.5%;height:12.5%;display:flex;align-items:center;justify-content:center;
+  font-size:clamp(26px,6.2vw,52px);line-height:1;pointer-events:none;transition:transform .38s cubic-bezier(.3,.7,.3,1);
+  font-family:"Segoe UI Symbol","Apple Symbols","DejaVu Sans","Noto Sans Symbols 2",serif}
+.piece.w{color:#fbfbf8;-webkit-text-stroke:1.4px #1b1b1b;text-shadow:0 1px 2px rgb(0 0 0 / .35)}
+.piece.b{color:#16161a;-webkit-text-stroke:.6px #000;text-shadow:0 0 3px rgb(255 255 255 / .6)}
+.piece.gone{opacity:0}
+@media (prefers-reduced-motion:reduce){.piece{transition:none}.sq .target{animation:none}}
+.panel{display:grid;gap:16px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;display:grid;gap:10px;min-width:0}
+.label{font:600 11px var(--font-body);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button{font:500 14px var(--font-body);color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 11px;cursor:pointer}
+button:hover{border-color:var(--muted)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+button:disabled{opacity:.45;cursor:default}
+.ctrl button{font-family:var(--font-mono);min-width:44px}
+.ctrl .play{min-width:92px;font-family:var(--font-body);font-weight:600;background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.status{font-family:var(--font-display);font-weight:600;font-size:1.25rem;line-height:1.25}
+.status .mate{color:var(--mate)} .status .check{color:var(--check)}
+.sub{color:var(--muted);font-size:13.5px}
+.moves{display:grid;grid-template-columns:2.2em 1fr 1fr;gap:2px 8px;font:14px var(--font-mono);font-variant-numeric:tabular-nums;max-height:260px;overflow:auto}
+.moves .n{color:var(--muted)}
+.moves span.m{padding:1px 6px;border-radius:4px;cursor:pointer}
+.moves span.m.cur{background:var(--accent);color:var(--accent-fg)}
+.moves span.m.future{color:var(--muted)}
+.regions{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
+.reg{display:flex;gap:8px;align-items:center;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);font-size:13px;text-align:left;width:100%}
+.reg .sw{width:14px;height:14px;border-radius:3px;flex:none}
+.reg .num{font:600 12px var(--font-mono);color:var(--muted);width:1.6em}
+.reg .sqs{font-family:var(--font-mono);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reg.on{border-color:var(--fg);box-shadow:0 0 0 1px var(--fg)}
+.keys{font-size:12.5px;color:var(--muted)} kbd{font:600 11px var(--font-mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px;background:var(--panel);color:var(--fg)}
+label.chk{display:flex;gap:6px;align-items:center;font-size:14px;cursor:pointer}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>Blind Queen Mate</h1>
+    <p>White starts with king d4 and queen f6, or one of its three symmetric copies. The 34 legal black king squares fall into 16 regions. For each region, one fixed series of white moves mates without ever looking at Black's replies. Click a black king square, then press play.</p>
+  </header>
+
+  <div class="main">
+    <div class="boardbox">
+      <div class="ranks" id="ranks"></div>
+      <div class="board" id="board" role="grid" aria-label="Chess board"></div>
+      <div class="files" id="files"></div>
+    </div>
+
+    <div class="panel">
+      <div class="card">
+        <div class="label">White setup (equivalent by symmetry)</div>
+        <div class="row" id="orients"></div>
+      </div>
+
+      <div class="card">
+        <div class="status" id="status">Pick a starting square for the black king</div>
+        <div class="sub" id="substatus"></div>
+        <div class="row ctrl">
+          <button id="bStart" title="Start (Home)">|&lt;</button>
+          <button id="bPrev" title="Back (←)">&lt;</button>
+          <button id="bPlay" class="play" title="Play / pause (Space)">Play</button>
+          <button id="bNext" title="Forward (→)">&gt;</button>
+          <button id="bEnd" title="End (End)">&gt;|</button>
+        </div>
+        <div class="row">
+          <span class="label">Black replies</span>
+          <button id="mRandom" aria-pressed="true">Random</button>
+          <button id="mManual" aria-pressed="false">I choose</button>
+          <button id="reroll" title="Draw new random replies">New random line</button>
+        </div>
+        <div class="row">
+          <label class="chk"><input type="checkbox" id="showColor" checked> Colour regions</label>
+          <label class="chk"><input type="checkbox" id="showNums" checked> Region numbers</label>
+        </div>
+        <label class="chk"><input type="checkbox" id="showPoss" checked> Show every square the black king could be on (what White “knows”)</label>
+        <div class="moves" id="moves"></div>
+        <div class="keys"><kbd>←</kbd> <kbd>→</kbd> step &nbsp; <kbd>Space</kbd> play/pause &nbsp; <kbd>Home</kbd> <kbd>End</kbd> jump</div>
+      </div>
+
+      <div class="card">
+        <div class="label">The 16 regions · one premove sequence each</div>
+        <div class="regions" id="regions"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Canonical data (white Kd4 Qf6). Each region: start squares and the fixed white sequence.
+const REGIONS = [
+ {sq:"a1 b1 c1 d1 d2", seq:"Qf2 Kc3 Qf1 Qd1 Qa1", hue:225},
+ {sq:"g1 g2 h1 h2 h3", seq:"Qf4 Kd3 Ke2 Qg5 Kf1 Qg2 Qg6 Qg5 Qg2", hue:292.5},
+ {sq:"a2 a3 a4 b4", seq:"Qb6 Kc3 Qa6 Qa4 Qa1", hue:315},
+ {sq:"a7 a8 b7 b8 c8", seq:"Qd6 Kc4 Kb5 Qe7 Ka6 Qb7 Qf7 Qe7 Qb7", hue:157.5},
+ {sq:"e1 e2", seq:"Ke4 Qb2 Kd3 Qd2 Qe2 Ke3 Kf3 Qg2", hue:112.5},
+ {sq:"a5 b5", seq:"Kd5 Qb2 Kc4 Qb4 Qb5 Kc5 Kc6 Qb7", hue:67.5},
+ {sq:"g8 h7", seq:"Kc5 Kd6 Ke7 Qg5 Kf6 Qg7", hue:45},
+ {sq:"b2", seq:"Qc6 Qc4 Kd3 Kd2 Qb5 Kc1 Qb2 Qb6 Qb5 Qa4", hue:90},
+ {sq:"h5", seq:"Qg7 Ke3 Kf3 Qg4 Qg2", hue:270},
+ {sq:"e8", seq:"Qg7 Kc5 Kc6 Qd7 Qb7", hue:135},
+ {sq:"g3", seq:"Qf5 Ke3 Qg5 Kf3 Qc1 Qh6 Qh4 Qf2", hue:22.5},
+ {sq:"c7", seq:"Qe6 Kc5 Qe7 Kc6 Qa3 Qf8 Qd8 Qb6", hue:247.5},
+ {sq:"c2", seq:"Kc4 Qf2 Kc3 Qf1 Qd1 Qa1", hue:337.5},
+ {sq:"b3", seq:"Kd3 Qb6 Kc3 Qa6 Qa4 Qa1", hue:202.5},
+ {sq:"d7", seq:"Kc5 Qg7 Qf7 Kc6 Qf8 Qd8 Qb6", hue:0},
+ {sq:"g4", seq:"Ke3 Qg7 Qg6 Kf3 Qh6 Qh4 Qf2", hue:180},
+];
+const FILES="abcdefgh";
+const P=s=>FILES.indexOf(s[0])+8*(+s[1]-1);
+const N=i=>FILES[i%8]+(Math.floor(i/8)+1);
+// symmetry transforms of the square
+function T(s,t){let f=s%8,r=Math.floor(s/8);for(let k=0;k<(t&3);k++){[f,r]=[r,7-f]}if(t&4)f=7-f;return r*8+f}
+const ORIENTS=[]; {const seen=new Set();for(let t=0;t<8;t++){const k=T(P("d4"),t),q=T(P("f6"),t),key=k+","+q;if(!seen.has(key)){seen.add(key);ORIENTS.push({t,k,q})}}
+  ORIENTS.sort((a,b)=>(a.k-b.k)||(a.q-b.q)); const i0=ORIENTS.findIndex(o=>o.t===0); ORIENTS.unshift(ORIENTS.splice(i0,1)[0]);}
+
+// geometry
+const KN=[];for(let s=0;s<64;s++){const f=s%8,r=s>>3,a=[];for(let df=-1;df<=1;df++)for(let dr=-1;dr<=1;dr++){if(!df&&!dr)continue;const x=f+df,y=r+dr;if(x>=0&&x<8&&y>=0&&y<8)a.push(y*8+x)}KN.push(a)}
+const DIRS=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+function qAttacks(q,wk){const A=new Set();const f=q%8,r=q>>3;for(const[df,dr]of DIRS){let x=f+df,y=r+dr;while(x>=0&&x<8&&y>=0&&y<8){const s=y*8+x;A.add(s);if(s===wk)break;x+=df;y+=dr}}return A}
+function blackMoves(wk,q,bk){const A=qAttacks(q,wk);const kwa=new Set(KN[wk]);const out=[];
+  for(const t of KN[bk]){if(t===wk||kwa.has(t))continue;if(t===q){if(!kwa.has(q))out.push(t);continue}if(A.has(t))continue;out.push(t)}
+  return {moves:out,check:A.has(bk)}}
+
+// state
+let orient=0, region=null, startSq=null, plies=[], cur=0, playing=false, timer=null, manual=false, rng=Math.random;
+let R=[]; // regions in current orientation
+function buildRegions(){const t=ORIENTS[orient].t;R=REGIONS.map((g,i)=>({i,hue:g.hue,squares:g.sq.split(" ").map(s=>T(P(s),t)),
+  seq:g.seq.split(" ").map(m=>({p:m[0],to:T(P(m.slice(1)),t)}))}))}
+const regionOf=s=>R.find(g=>g.squares.includes(s));
+
+function initialPos(){const o=ORIENTS[orient];return {wk:o.k,q:o.q,bk:startSq,poss:region?[...region.squares]:[],mover:null,from:null,to:null,txt:"",check:false,mate:false,wi:0}}
+function newLine(){plies=[initialPos()];cur=0;extend(true)}
+// extend the line as far as possible (random mode) or until black needs a manual choice
+function extend(){
+  for(let guard=0;guard<60;guard++){
+    const last=plies[plies.length-1];
+    if(last.mate)return;
+    if(last.mover!=="W"){ // white to move
+      const mv=region.seq[last.wi];if(!mv)return;
+      const nx={...last,mover:"W",from:mv.p==="K"?last.wk:last.q,to:mv.to,wi:last.wi+1};
+      if(mv.p==="K")nx.wk=mv.to;else nx.q=mv.to;
+      const r=blackMoves(nx.wk,nx.q,nx.bk);nx.check=r.check;nx.mate=r.check&&r.moves.length===0;
+      nx.txt=mv.p+N(mv.to)+(nx.mate?"#":r.check?"+":"");
+      nx.poss=last.poss.filter(s=>{const b=blackMoves(nx.wk,nx.q,s);return !(b.check&&b.moves.length===0)});
+      plies.push(nx);
+    } else { // black to move
+      if(manual)return;
+      const r=blackMoves(last.wk,last.q,last.bk);pushBlack(r.moves[Math.floor(rng()*r.moves.length)]);
+    }
+  }
+}
+function pushBlack(to){const last=plies[plies.length-1];const ps=new Set();for(const s of last.poss)for(const m of blackMoves(last.wk,last.q,s).moves)ps.add(m);
+  plies.push({...last,mover:"B",from:last.bk,to,bk:to,poss:[...ps],check:false,mate:false,txt:"K"+N(to)})}
+function needsBlackChoice(){const p=plies[plies.length-1];return manual&&cur===plies.length-1&&p.mover==="W"&&!p.mate}
+
+// rendering
+const boardEl=document.getElementById("board");const sqEls=[];
+(function(){const rk=document.getElementById("ranks"),fl=document.getElementById("files");
+  for(let r=7;r>=0;r--){const d=document.createElement("div");d.textContent=r+1;rk.appendChild(d)}
+  for(let f=0;f<8;f++){const d=document.createElement("div");d.textContent=FILES[f];fl.appendChild(d)}
+  for(let r=7;r>=0;r--)for(let f=0;f<8;f++){const s=r*8+f;const d=document.createElement("div");d.className="sq";d.dataset.s=s;d.setAttribute("role","gridcell");
+    d.setAttribute("aria-label",N(s));d.addEventListener("click",()=>clickSq(s));boardEl.appendChild(d);sqEls[s]=d}
+})();
+const pieces={};for(const[id,ch,cls]of[["wk","♚","w"],["q","♛","w"],["bk","♚","b"]]){const e=document.createElement("div");e.className="piece "+cls;e.textContent=ch;boardEl.appendChild(e);pieces[id]=e}
+function place(el,s){if(s==null){el.classList.add("gone");return}el.classList.remove("gone");const f=s%8,r=s>>3;el.style.transform=`translate(${f*100}%,${(7-r)*100}%)`}
+const isLight=s=>((s%8)+(s>>3))%2===1;
+const showColor=document.getElementById("showColor"),showNums=document.getElementById("showNums");
+showColor.onchange=()=>render();showNums.onchange=()=>render();
+function sqColor(s){const g=regionOf(s);if(!g||!showColor.checked)return isLight(s)?"var(--neutral-light)":"var(--neutral-dark)";
+  return isLight(s)?`oklch(var(--sq-light-L) var(--sq-C-light) ${g.hue})`:`oklch(var(--sq-dark-L) var(--sq-C-dark) ${g.hue})`}
+const showPoss=document.getElementById("showPoss");
+function render(){
+  const p=plies[cur]||initialPos();const legalStart=new Set(R.flatMap(g=>g.squares));
+  const choosing=needsBlackChoice();const choices=choosing?blackMoves(p.wk,p.q,p.bk).moves:[];
+  for(let s=0;s<64;s++){const e=sqEls[s];e.style.background=sqColor(s);
+    e.className="sq"+(legalStart.has(s)?"":" dim")+(region&&region.squares.includes(s)?" inreg":"")+(region&&cur>0&&!region.squares.includes(s)&&legalStart.has(s)?" faded":"")
+      +(s===startSq&&cur===0?" sel":"")+(cur>0&&(s===p.from||s===p.to)?" last":"")+(p.bk===s&&p.mate?" mated":p.bk===s&&p.check?" checked":"");
+    e.innerHTML=legalStart.has(s)&&showNums.checked?`<span class="rn">${R.indexOf(regionOf(s))+1}</span>`:"";
+    if(showPoss.checked&&region&&p.poss.includes(s)&&s!==p.bk)e.insertAdjacentHTML("beforeend",'<span class="dot"></span>');
+    if(choices.includes(s))e.insertAdjacentHTML("beforeend",'<span class="target"></span>');}
+  place(pieces.wk,p.wk);place(pieces.q,p.q);place(pieces.bk,p.bk);
+  // status
+  const st=document.getElementById("status"),sub=document.getElementById("substatus");
+  if(startSq==null){st.textContent="Pick a starting square for the black king";sub.textContent="Coloured squares are legal starts. The number on each square is its region. Grey squares are occupied, attacked, or next to the white king.";}
+  else{const n=R.indexOf(region)+1,ln=region.seq.length;
+    if(p.mate){st.innerHTML=`<span class="mate">Checkmate</span> after ${p.wi} white moves`;sub.textContent=`Region ${n} (${region.squares.map(N).join(" ")}): the same ${ln}-move sequence mates from every square in it, whatever Black plays.`}
+    else if(choosing){st.textContent="Your move as Black";sub.textContent="Click a ringed square. White's next move is already fixed."}
+    else if(cur===0){st.textContent=`Black king on ${N(startSq)} · region ${n}`;sub.textContent=`White will premove ${ln} moves: ${region.seq.map(m=>m.p+N(m.to)).join(" ")}. Press play.`}
+    else{st.innerHTML=p.mover==="W"?(`White ${p.txt}`+(p.check?' · <span class="check">check</span>':"")):`Black ${p.txt}`;
+      sub.textContent=`${p.poss.length} square${p.poss.length===1?"":"s"} where the black king could be, from White's blind point of view.`}}
+  // move list
+  const mv=document.getElementById("moves");mv.innerHTML="";
+  if(region){const endL=plies[plies.length-1];const nW=endL.mate?endL.wi:region.seq.length;
+    for(let w=0;w<nW;w++){const wi=1+2*w,bi=wi+1;
+    const n=document.createElement("span");n.className="n";n.textContent=(w+1)+".";mv.appendChild(n);
+    for(const idx of[wi,bi]){const sp=document.createElement("span");
+      if(idx<plies.length){sp.className="m"+(idx===cur?" cur":"");sp.textContent=plies[idx].txt;sp.onclick=()=>{stop();cur=idx;render()}}
+      else if(idx===wi){sp.className="m future";const m=region.seq[w];sp.textContent=m.p+N(m.to)}
+      else sp.textContent="";
+      mv.appendChild(sp)}}
+    const c=mv.querySelector(".cur");if(c)c.scrollIntoView({block:"nearest"});}
+  document.getElementById("bPlay").textContent=playing?"Pause":(cur>=plies.length-1&&plies.length>1&&plies[plies.length-1].mate?"Replay":"Play");
+  for(const id of["bStart","bPrev"])document.getElementById(id).disabled=cur===0;
+  for(const id of["bNext","bEnd"])document.getElementById(id).disabled=!region||cur>=plies.length-1;
+  document.getElementById("bPlay").disabled=!region;
+  document.querySelectorAll(".reg").forEach((b,i)=>b.classList.toggle("on",region&&R.indexOf(region)===i));
+}
+function regionsList(){const box=document.getElementById("regions");box.innerHTML="";
+  R.forEach((g,i)=>{const b=document.createElement("button");b.className="reg";
+    b.innerHTML=`<span class="sw" style="background:oklch(var(--sq-dark-L) var(--sq-C-dark) ${g.hue})"></span><span class="num">${i+1}</span><span class="sqs">${g.squares.map(N).join(" ")}</span><span class="num" style="margin-left:auto">${g.seq.length}</span>`;
+    b.title=`Region ${i+1}: ${g.seq.length} white moves`;b.onclick=()=>choose(g.squares[0]);box.appendChild(b)})}
+function orientButtons(){const box=document.getElementById("orients");box.innerHTML="";
+  ORIENTS.forEach((o,i)=>{const b=document.createElement("button");b.textContent=`K${N(o.k)} Q${N(o.q)}`;b.setAttribute("aria-pressed",i===orient);
+    b.onclick=()=>{const keep=startSq!=null?REGIONS.length:0;const canon=startSq!=null?inv(startSq):null;orient=i;buildRegions();
+      if(canon!=null){startSq=T(canon,ORIENTS[orient].t);region=regionOf(startSq);stop();newLine()}else{plies=[initialPos()];cur=0}
+      orientButtons();regionsList();render()};box.appendChild(b)})}
+function inv(s){const t=ORIENTS[orient].t;for(let c=0;c<64;c++)if(T(c,t)===s)return c}
+
+function choose(s){stop();startSq=s;region=regionOf(s);newLine();render()}
+function clickSq(s){
+  if(needsBlackChoice()){const p=plies[cur];if(blackMoves(p.wk,p.q,p.bk).moves.includes(s)){pushBlack(s);extend();cur++;render();if(playing)schedule()}return}
+  if(regionOf(s))choose(s)}
+function step(d){if(!region)return;if(d>0&&cur<plies.length-1)cur++;else if(d<0&&cur>0)cur--;render()}
+function schedule(){clearTimeout(timer);timer=setTimeout(tick,850)}
+function tick(){if(!playing)return;if(needsBlackChoice()){render();return}
+  if(cur<plies.length-1){cur++;render();if(cur<plies.length-1||needsBlackChoice())schedule();else{playing=false;render()}}else{playing=false;render()}}
+function stop(){playing=false;clearTimeout(timer)}
+function togglePlay(){if(!region)return;if(playing){stop();render();return}
+  if(cur>=plies.length-1&&plies[plies.length-1].mate)cur=0;playing=true;render();schedule()}
+
+document.getElementById("bPlay").onclick=togglePlay;
+document.getElementById("bPrev").onclick=()=>{stop();step(-1)};
+document.getElementById("bNext").onclick=()=>{stop();step(1)};
+document.getElementById("bStart").onclick=()=>{stop();cur=0;render()};
+document.getElementById("bEnd").onclick=()=>{stop();cur=plies.length-1;render()};
+document.getElementById("reroll").onclick=()=>{if(region){stop();newLine();render()}};
+showPoss.onchange=render;
+function setMode(m){manual=m;document.getElementById("mRandom").setAttribute("aria-pressed",!m);document.getElementById("mManual").setAttribute("aria-pressed",m);
+  document.getElementById("reroll").disabled=m;if(region){stop();newLine();render()}else render()}
+document.getElementById("mRandom").onclick=()=>setMode(false);
+document.getElementById("mManual").onclick=()=>setMode(true);
+document.addEventListener("keydown",e=>{if(e.target.closest&&e.target.closest("input"))return;
+  if(e.key==="ArrowRight"){e.preventDefault();stop();step(1)}else if(e.key==="ArrowLeft"){e.preventDefault();stop();step(-1)}
+  else if(e.key===" "){e.preventDefault();togglePlay()}else if(e.key==="Home"){e.preventDefault();stop();cur=0;render()}
+  else if(e.key==="End"){e.preventDefault();stop();cur=plies.length-1;render()}});
+
+buildRegions();orientButtons();regionsList();
+choose(P("a1")); // open on a worked example
+</script>
+</body>
+</html>
